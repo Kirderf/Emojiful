@@ -36,8 +36,7 @@ public class EmojiSuggestionHelper extends IDrawableGuiListener {
     private static Suggestions createSuggestions(final Iterable<String> collection, final SuggestionsBuilder suggestionBuilder) {
         final String remaining = suggestionBuilder.getRemaining().toLowerCase(Locale.ROOT);
         for (String key : collection) {
-            if (key.toLowerCase(Locale.ROOT).startsWith(remaining))
-                suggestionBuilder.suggest(key);
+            if (key.toLowerCase(Locale.ROOT).startsWith(remaining)) suggestionBuilder.suggest(key);
         }
         return suggestionBuilder.build();
     }
@@ -89,8 +88,7 @@ public class EmojiSuggestionHelper extends IDrawableGuiListener {
                     final CompletableFuture<Iterable<String>> list = CompletableFuture.supplyAsync(() -> ClientEmojiHandler.ALL_EMOJIS);
                     this.suggestionsFuture = list.thenApplyAsync(stringIterable -> createSuggestions(stringIterable, new SuggestionsBuilder(s, lastWordIndex)));
                     this.suggestionsFuture.thenRun(() -> {
-                        if (this.suggestionsFuture.isDone())
-                            showSuggestions();
+                        if (this.suggestionsFuture.isDone()) showSuggestions();
                     });
                 }
         }
@@ -141,7 +139,6 @@ public class EmojiSuggestionHelper extends IDrawableGuiListener {
         }
 
         public void render(GuiGraphics guiGraphics) {
-            guiGraphics.pose().translate(0,0, 100);
             for (int i = 0; i < Math.min(this.suggestions.getList().size(), 10); ++i) {
                 int pos = (this.index + i) % this.suggestions.getList().size();
                 final Suggestion suggestion = this.suggestions.getList().get(pos);
@@ -178,8 +175,7 @@ public class EmojiSuggestionHelper extends IDrawableGuiListener {
                 EmojiSuggestionHelper.this.chatScreen.input.setSuggestion("");
                 removeSuggestion();
                 return false;
-            } else
-                return false;
+            } else return false;
         }
 
         public void offsetIndex(final int deltaIndex) {

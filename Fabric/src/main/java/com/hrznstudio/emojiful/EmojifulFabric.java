@@ -1,37 +1,36 @@
 package com.hrznstudio.emojiful;
 
-import com.hrznstudio.emojiful.datapack.EmojiRecipe;
 import com.hrznstudio.emojiful.datapack.EmojiRecipeSerializer;
+import com.hrznstudio.emojiful.datapack.EmojiRecipeType;
 import com.hrznstudio.emojiful.gui.EmojifulBedChatScreen;
 import com.hrznstudio.emojiful.gui.EmojifulChatScreen;
 import com.hrznstudio.emojiful.platform.FabricConfigHelper;
 import eu.midnightdust.lib.config.MidnightConfig;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.client.gui.screens.InBedChatScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.item.crafting.RecipeSerializer;
-import net.minecraft.world.item.crafting.RecipeType;
 
 public class EmojifulFabric implements ModInitializer {
 
 
-    public static final RecipeType<EmojiRecipe> EMOJI_RECIPE_TYPE = Registry.register(BuiltInRegistries.RECIPE_TYPE,
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "emoji_recipe_type"), new RecipeType<EmojiRecipe>() {
-                @Override
-                public String toString() {
-                    return "emoji_recipe_type";
-                }
-            });
-    public static final RecipeSerializer<EmojiRecipe> EMOJI_RECIPE_SERIALIZER = RecipeSerializer.register(Constants.MOD_ID + ":emoji_recipe", new EmojiRecipeSerializer());
-
     @Override
     public void onInitialize() {
+        Registry.register(BuiltInRegistries.RECIPE_TYPE, EmojiRecipeType.ID, EmojiRecipeType.INSTANCE);
+        Registry.register(BuiltInRegistries.RECIPE_SERIALIZER, EmojiRecipeType.ID, EmojiRecipeSerializer.INSTANCE);
         MidnightConfig.init(Constants.MOD_ID, FabricConfigHelper.class);
+        
+        // Register networking for emoji synchronization
+        EmojiNetworking.registerNetworking();
+        
+        // Send emoji data when player joins
+        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+            EmojiNetworking.sendEmojiDataToClient(handler.getPlayer());
+        });
     }
 
 

@@ -64,7 +64,10 @@ public class EmojiSelectionGui extends IDrawableGuiListener {
     @Override
     public void render(GuiGraphics guiGraphics) {
         if (this.openSelectionAreaEmoji != -1)
-            guiGraphics.drawString(Minecraft.getInstance().font, Constants.EMOJI_MAP.get("Smileys & Emotion").get(openSelectionAreaEmoji).strings.get(0), openSelectionArea.getX(), openSelectionArea.getY(), 0);
+            guiGraphics.drawString(Minecraft.getInstance().font, Constants.EMOJI_MAP
+                    .get("Smileys & Emotion")
+                    .get(openSelectionAreaEmoji).strings
+                    .getFirst(), openSelectionArea.getX(), openSelectionArea.getY(), 0);
         if (this.showingSelectionArea) {
             drawRectangle(guiGraphics, this.selectionArea);
             drawRectangle(guiGraphics, this.categorySelectionArea);
@@ -81,8 +84,8 @@ public class EmojiSelectionGui extends IDrawableGuiListener {
                 float textScale = 0.5f;
                 List<FormattedCharSequence> iTextPropertiesList = Minecraft.getInstance().font.split(FormattedText.of(builder.toString()), (int) ((emojiInfoArea.getWidth() - 18) * (1 / textScale)));
                 float i = -iTextPropertiesList.size() / 2;
-                guiGraphics.pose().pushPose();
-                guiGraphics.pose().scale(textScale, textScale, textScale);
+                guiGraphics.pose().pushMatrix();
+                guiGraphics.pose().scale(textScale, textScale);
                 for (FormattedCharSequence reorderingProcessor : iTextPropertiesList) {
                     StringBuilder stringBuilder = new StringBuilder();
                     reorderingProcessor.accept((p_accept_1_, p_accept_2_, ch) -> {
@@ -92,8 +95,7 @@ public class EmojiSelectionGui extends IDrawableGuiListener {
                     guiGraphics.drawString(Minecraft.getInstance().font, EmojiFontHelper.SCAPED_STRING + stringBuilder.toString(), (int) ((emojiInfoArea.getX() + 15) * (1 / textScale)), (int) ((emojiInfoArea.getY() + 8 + 4 * i) * (1 / textScale)), 0x969696);
                     ++i;
                 }
-                guiGraphics.pose().scale(1, 1, 1);
-                guiGraphics.pose().popPose();
+                guiGraphics.pose().popMatrix();
             }
             progressY = (int) (((this.categorySelectionArea.getHeight() - 10) / ((double) ClientEmojiHandler.CATEGORIES.size() - 7)) * (categoryPointer));
             drawRectangle(guiGraphics, new Rect2i(this.categorySelectionArea.getX() + this.categorySelectionArea.getWidth() - 2, this.categorySelectionArea.getY() + progressY + 2, 1, 5), 0xff525252);
@@ -107,7 +109,9 @@ public class EmojiSelectionGui extends IDrawableGuiListener {
                         guiGraphics.fill(rec.getX() - 1, rec.getY() - 2, rec.getX() + rec.getWidth(), rec.getY() + rec.getHeight() - 1, -2130706433);
                     }
                     if (rec.contains((int) lastMouseX, (int) lastMouseY) && Minecraft.getInstance().screen != null) {
-                        guiGraphics.renderTooltip(Minecraft.getInstance().font, Arrays.asList(MutableComponent.create(new PlainTextContents.LiteralContents((category.name())))), Optional.empty(), (int) lastMouseX, (int) lastMouseY);
+                        //guiGraphics.renderTooltip(Minecraft.getInstance().font,
+                        //        List.of((ClientTooltipComponent) MutableComponent.create(new PlainTextContents.LiteralContents((category.name())))),
+                        //        Optional.empty(), (int) lastMouseX, (int) lastMouseY,null);
                     }
                     if (ClientEmojiHandler.SORTED_EMOJIS_FOR_SELECTION.containsKey(category) && ClientEmojiHandler.SORTED_EMOJIS_FOR_SELECTION.get(category).size() > 0) {
                         guiGraphics.drawString(Minecraft.getInstance().font, ClientEmojiHandler.SORTED_EMOJIS_FOR_SELECTION.get(category).get(0)[0].strings.get(0), categorySelectionArea.getX() + 6, categorySelectionArea.getY() + 6 + i * 12, 0);
@@ -227,9 +231,9 @@ public class EmojiSelectionGui extends IDrawableGuiListener {
         if (lineToDraw != null) {
             if (lineToDraw instanceof EmojiCategory) {
                 float textScale = 1f;
-                guiGraphics.pose().scale(textScale, textScale, textScale);
+                guiGraphics.pose().scale(textScale, textScale);
                 guiGraphics.drawString(Minecraft.getInstance().font, ((EmojiCategory) lineToDraw).name(), (int) ((categorySelectionArea.getX() + categorySelectionArea.getWidth() + 2) * (1 / textScale)), (int) ((categorySelectionArea.getY() + height + 2) * (1 / textScale)), 0x969696);
-                guiGraphics.pose().scale(1, 1, 1);
+                guiGraphics.pose().scale(1, 1);
             } else {
                 Emoji[] emojis = (Emoji[]) lineToDraw;
                 for (int i = 0; i < emojis.length; i++) {

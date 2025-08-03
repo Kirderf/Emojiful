@@ -8,8 +8,7 @@
 
   ],
   "client": [
-    "ScreenEmojifulMixin",
-    "ClientPacketListenerMixin"
+    "ScreenEmojifulMixin"
   ],
   "injectors": {
     "defaultRequire": 1

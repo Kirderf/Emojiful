@@ -1,11 +1,8 @@
 package com.hrznstudio.emojiful.platform;
 
-import com.hrznstudio.emojiful.EmojifulFabric;
-import com.hrznstudio.emojiful.datapack.EmojiRecipe;
+import com.hrznstudio.emojiful.networking.EmojiData;
 import com.hrznstudio.emojiful.platform.services.IPlatformHelper;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.world.item.crafting.RecipeSerializer;
-import net.minecraft.world.item.crafting.RecipeType;
 
 public class FabricPlatformHelper implements IPlatformHelper {
 
@@ -27,12 +24,26 @@ public class FabricPlatformHelper implements IPlatformHelper {
     }
 
     @Override
-    public RecipeType<EmojiRecipe> getRecipeType() {
-        return EmojifulFabric.EMOJI_RECIPE_TYPE;
+    public String getEmojiName(Object emojiData) {
+        if (emojiData instanceof EmojiData data) {
+            return data.name();
+        }
+        throw new IllegalArgumentException("Expected EmojiData, got: " + emojiData.getClass());
     }
 
     @Override
-    public RecipeSerializer<EmojiRecipe> getRecipeSerializer() {
-        return EmojifulFabric.EMOJI_RECIPE_SERIALIZER;
+    public String getEmojiCategory(Object emojiData) {
+        if (emojiData instanceof EmojiData data) {
+            return data.category();
+        }
+        throw new IllegalArgumentException("Expected EmojiData, got: " + emojiData.getClass());
+    }
+
+    @Override
+    public String getEmojiUrl(Object emojiData) {
+        if (emojiData instanceof EmojiData data) {
+            return data.url();
+        }
+        throw new IllegalArgumentException("Expected EmojiData, got: " + emojiData.getClass());
     }
 }

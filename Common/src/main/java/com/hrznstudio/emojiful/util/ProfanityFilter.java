@@ -21,6 +21,7 @@ public class ProfanityFilter {
     static int largestWordLength = 0;
 
     public static void loadConfigs() {
+        Constants.LOG.info("Loading profanity filter words");
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(new URL("https://docs.google.com/spreadsheets/d/1Ufoero85kpr4caXLLaPpcgwB4tX44GgoGJ4F-bVfdI8/export?format=csv").openConnection().getInputStream(), StandardCharsets.UTF_8))) {
             String line = "";
             int counter = 0;
@@ -77,8 +78,8 @@ public class ProfanityFilter {
                         // for example, if you want to say the word bass, that should be possible.
                         String[] ignoreCheck = words.get(wordToCheck);
                         boolean ignore = false;
-                        for (int s = 0; s < ignoreCheck.length; s++) {
-                            if (input.contains(ignoreCheck[s])) {
+                        for (String value : ignoreCheck) {
+                            if (input.contains(value)) {
                                 ignore = true;
                                 break;
                             }

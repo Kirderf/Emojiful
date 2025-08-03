@@ -11,6 +11,7 @@ import com.hrznstudio.emojiful.util.ProfanityFilter;
 import java.io.StringReader;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class ClientEmojiHandler {
     public static final List<EmojiCategory> CATEGORIES = new ArrayList<>();
@@ -21,14 +22,24 @@ public class ClientEmojiHandler {
 
     public static void setup() {
         new Thread(() -> {
+            Constants.LOG.info("[EMOJI SETUP] Starting to load emojis");
             preInitEmojis();
             indexEmojis();
-            Constants.LOG.info("Loaded " + Constants.EMOJI_LIST.size() + " emojis");
+            Constants.LOG.info("[EMOJI SETUP] Loaded {} emojis total", Constants.EMOJI_LIST.size());
+            Constants.LOG.info("[EMOJI SETUP] Categories loaded: {}", CATEGORIES.size());
+            for (EmojiCategory category : CATEGORIES) {
+                int emojiCount = Constants.EMOJI_MAP.getOrDefault(category.name(), new ArrayList<>()).size();
+                Constants.LOG.info("[EMOJI SETUP]   Category '{}': {} emojis (worldBased: {})", 
+                    category.name(), emojiCount, category.worldBased());
+            }
         }).start();
     }
 
     public static void indexEmojis() {
-        ALL_EMOJIS = Constants.EMOJI_LIST.stream().map(emoji -> emoji.strings).flatMap(Collection::stream).collect(Collectors.toList());
+        ALL_EMOJIS = Constants.EMOJI_LIST.stream()
+                .map(emoji -> emoji.strings)
+                .flatMap(Collection::stream)
+                .toList();
         SORTED_EMOJIS_FOR_SELECTION = new LinkedHashMap<>();
         for (EmojiCategory category : CATEGORIES) {
             ++lineAmount;
@@ -49,19 +60,37 @@ public class ClientEmojiHandler {
                 ++lineAmount;
             }
         }
+        Constants.LOG.info("Indexed emojis");
     }
 
     private static void preInitEmojis() {
-        if (Services.CONFIG.loadCustom()) loadCustomEmojis();
+        Constants.LOG.info("[EMOJI SETUP] Config - loadCustom: {}, loadTwemoji: {}", 
+            Services.CONFIG.loadCustom(), Services.CONFIG.loadTwemoji());
+        
+        if (Services.CONFIG.loadCustom()) {
+            Constants.LOG.info("[EMOJI SETUP] Loading custom emojis...");
+            loadCustomEmojis();
+        } else {
+            Constants.LOG.info("[EMOJI SETUP] Custom emoji loading is disabled");
+        }
+        
         //loadGithubEmojis();
         if (Services.CONFIG.loadTwemoji()){
-            CATEGORIES.addAll(Arrays.asList("Smileys & Emotion", "Animals & Nature", "Food & Drink", "Activities", "Travel & Places", "Objects", "Symbols", "Flags").stream().map(s -> new EmojiCategory(s, false)).collect(Collectors.toList()));
+            Constants.LOG.info("[EMOJI SETUP] Loading Twemoji emojis...");
+            CATEGORIES.addAll(Stream.of("Smileys & Emotion", "Animals & Nature", "Food & Drink", "Activities", "Travel & Places", "Objects", "Symbols", "Flags")
+                    .map(s -> new EmojiCategory(s, false))
+                    .toList());
             loadTwemojis();
+        } else {
+            Constants.LOG.info("[EMOJI SETUP] Twemoji loading is disabled");
         }
+        
         if (Services.CONFIG.getProfanityFilter()) ProfanityFilter.loadConfigs();
+        Constants.LOG.info("[EMOJI SETUP] Pre-initialization completed");
     }
 
     private static void loadCustomEmojis() {
+        Constants.LOG.info("Loading custom emojis");
         try {
             YamlReader reader = new YamlReader(new StringReader(CommonClass.readStringFromURL("https://raw.githubusercontent.com/InnovativeOnlineIndustries/emojiful-assets/1.20-plus/Categories.yml")));
             ArrayList<String> categories = (ArrayList<String>) reader.read();
@@ -69,7 +98,6 @@ public class ClientEmojiHandler {
                 CATEGORIES.add(new EmojiCategory(category.replace(".yml", ""), false));
                 List<Emoji> emojis = CommonClass.readCategory(category);
                 emojis.forEach(emoji -> emoji.location = CommonClass.cleanURL(emoji.location));
-                emojis.forEach(emoji -> emoji.name = "custom_" + emoji.name);
                 Constants.EMOJI_LIST.addAll(emojis);
                 Constants.EMOJI_MAP.put(category.replace(".yml", ""), emojis);
             }
@@ -80,8 +108,15 @@ public class ClientEmojiHandler {
     }
 
     public static void loadTwemojis() {
+        Constants.LOG.info("[EMOJI SETUP] Loading Twemoji emojis from external source");
         try {
-            for (JsonElement element : CommonClass.readJsonFromUrl("https://raw.githubusercontent.com/iamcal/emoji-data/master/emoji.json").getAsJsonArray()) {
+            JsonElement jsonData = CommonClass.readJsonFromUrl("https://raw.githubusercontent.com/iamcal/emoji-data/master/emoji.json");
+            if (jsonData == null || !jsonData.isJsonArray()) {
+                Constants.LOG.error("[EMOJI SETUP] Failed to load Twemoji data - invalid JSON response");
+                return;
+            }
+
+            for (JsonElement element : jsonData.getAsJsonArray()) {
                 if (element.getAsJsonObject().get("has_img_twitter").getAsBoolean()) {
                     EmojiFromTwitmoji emoji = new EmojiFromTwitmoji();
                     emoji.name = "twemojis_" + element.getAsJsonObject().get("short_name").getAsString();
@@ -96,7 +131,7 @@ public class ClientEmojiHandler {
                     }
                     Constants.EMOJI_MAP.computeIfAbsent(element.getAsJsonObject().get("category").getAsString(), s -> new ArrayList<>()).add(emoji);
                     Constants.EMOJI_LIST.add(emoji);
-                    if (emoji.texts.size() > 0) {
+                    if (!emoji.texts.isEmpty()) {
                         ClientEmojiHandler.EMOJI_WITH_TEXTS.add(emoji);
                     }
                 }
@@ -105,7 +140,7 @@ public class ClientEmojiHandler {
             Constants.EMOJI_MAP.values().forEach(emojis -> emojis.sort(Comparator.comparingInt(o -> o.sort)));
         } catch (Exception e) {
             Constants.error = true;
-            Constants.LOG.error("Emojiful found an error while loading", e);
+            Constants.LOG.error("[EMOJI SETUP] Error loading Twemoji emojis", e);
         }
     }
 

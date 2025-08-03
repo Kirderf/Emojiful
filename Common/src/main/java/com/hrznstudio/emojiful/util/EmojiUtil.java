@@ -1,18 +1,12 @@
 package com.hrznstudio.emojiful.util;
 
+import com.hrznstudio.emojiful.Constants;
 import com.hrznstudio.emojiful.api.Emoji;
-import com.mojang.blaze3d.platform.GlStateManager;
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.DefaultVertexFormat;
-import com.mojang.blaze3d.vertex.VertexConsumer;
-import com.mojang.blaze3d.vertex.VertexFormat;
-import net.minecraft.client.renderer.GameRenderer;
-import net.minecraft.client.renderer.MultiBufferSource;
+import com.mojang.blaze3d.platform.NativeImage;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.RenderStateShard;
-import net.minecraft.client.renderer.RenderType;
+import net.minecraft.resources.ResourceLocation;
 import org.apache.commons.lang3.tuple.Pair;
-import org.joml.Matrix4f;
-import org.lwjgl.opengl.GL11;
 import org.w3c.dom.Node;
 
 import javax.imageio.ImageIO;
@@ -26,46 +20,52 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.lwjgl.opengl.GL11.GL_LINEAR;
-import static org.lwjgl.opengl.GL11.GL_NEAREST;
+public class EmojiUtil extends RenderStateShard {
 
-public class EmojiUtil extends RenderType {
-
-    private EmojiUtil(String string, VertexFormat vertexFormat, VertexFormat.Mode mode, int i, boolean bl, boolean bl2, Runnable runnable, Runnable runnable2) {
-        super(string, vertexFormat, mode, i, bl, bl2, runnable, runnable2);
+    private EmojiUtil(String string, Runnable runnable, Runnable runnable2) {
+        super(string, runnable, runnable2);
     }
 
-    public static RenderType createRenderType(Emoji emoji) {
-        RenderType.CompositeState state = RenderType.CompositeState.builder()
-                .setShaderState(new RenderStateShard.ShaderStateShard(GameRenderer::getRendertypeTextShader))
-                .setTextureState(new RenderStateShard.TextureStateShard(emoji.getResourceLocationForBinding(), false, false))
-                .setTransparencyState(new RenderStateShard.TransparencyStateShard("translucent_transparency", () -> {
-                    RenderSystem.enableBlend();
-                    RenderSystem.blendFuncSeparate(GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA, GlStateManager.SourceFactor.ONE, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA);
-                }, () -> {
-                    RenderSystem.disableBlend();
-                    RenderSystem.defaultBlendFunc();
-                }))/*.setAlphaState(new RenderStateShard.AlphaStateShard(0.003921569F))*/.setLightmapState(new RenderStateShard.LightmapStateShard(true)).createCompositeState(false);
-        return RenderType.create("emoji_render", DefaultVertexFormat.POSITION_COLOR_TEX_LIGHTMAP, VertexFormat.Mode.QUADS, 256, false, true, state);
+    public static NativeImage convertToNativeImage(BufferedImage bufferedImage) {
+        NativeImage nativeImage = new NativeImage(bufferedImage.getWidth(), bufferedImage.getHeight(), true);
+        for (int y = 0; y < bufferedImage.getHeight(); ++y) {
+            for (int x = 0; x < bufferedImage.getWidth(); ++x) {
+                int argb = bufferedImage.getRGB(x, y);
+                int a = (argb >> 24) & 0xFF;
+                int r = (argb >> 16) & 0xFF;
+                int g = (argb >> 8) & 0xFF;
+                int b = argb & 0xFF;
+                nativeImage.setPixelABGR(x, y, (a << 24) | (b << 16) | (g << 8) | r);
+            }
+        }
+        return nativeImage;
     }
 
-    public static float renderEmoji(Emoji emoji, float x, float y, Matrix4f matrix, MultiBufferSource buffer, int packedLight) {
-        float textureSize = 16;
-        float textureX = 0 / textureSize;
-        float textureY = 0 / textureSize;
-        float textureOffset = 16.0F / textureSize;
-        float size = 10f;
-        float offsetY = 1.0F;
-        float offsetX = 0.0F;
 
-        VertexConsumer builder = buffer.getBuffer(createRenderType(emoji));
+    public static void renderEmoji(Emoji emoji, float x, float y, GuiGraphics buffer) {
+        try {
 
-        builder.addVertex(matrix, x - offsetX, y - offsetY, 0.0f).setColor(255, 255, 255, 255).setUv(textureX, textureY).setLight(packedLight);
-        builder.addVertex(matrix, x - offsetX, y + size - offsetY, 0.0F).setColor(255, 255, 255, 255).setUv(textureX, textureY + textureOffset).setLight(packedLight);
-        builder.addVertex(matrix, x - offsetX + size, y + size - offsetY, 0.0F).setColor(255, 255, 255, 255).setUv(textureX + textureOffset, textureY + textureOffset).setLight(packedLight);
-        builder.addVertex(matrix, x - offsetX + size, y - offsetY, 0.0F).setColor(255, 255, 255, 255).setUv(textureX + textureOffset, textureY / textureSize).setLight(packedLight);
+            int size = 10;
+            ResourceLocation texture = emoji.getResourceLocationForBinding();
 
-        return 10f;
+            // Debug logging with proper logger
+            //Constants.LOG.info("[EMOJI UTIL] Rendering emoji: {} at ({}, {})", emoji.name, x, y);
+            //Constants.LOG.info("[EMOJI UTIL] Texture: {}", texture);
+            //Constants.LOG.info("[EMOJI UTIL] Finished loading: {}", emoji.finishedLoading);
+            //Constants.LOG.info("[EMOJI UTIL] Frames count: {}", emoji.frames.size());
+            //Constants.LOG.info("[EMOJI UTIL] Emoji location: {}", emoji.location);
+            //Constants.LOG.info("[EMOJI UTIL] Emoji version: {}", emoji.version);
+
+            if (texture != null && emoji.finishedLoading) {
+                Constants.LOG.info("[EMOJI UTIL] Attempting to render emoji texture");
+                buffer.blit(texture, size + (int) x, size + (int) y, (int) x, (int) y, 1, 0, 0, -1);
+
+            } else {
+                Constants.LOG.warn("[EMOJI UTIL] Emoji texture is null or not finished loading: {}", emoji.name);
+            }
+        } catch (Exception e) {
+            Constants.LOG.error("[EMOJI UTIL] Error rendering emoji: {}", e.getMessage(), e);
+        }
     }
 
     public static String cleanStringForRegex(String string) {

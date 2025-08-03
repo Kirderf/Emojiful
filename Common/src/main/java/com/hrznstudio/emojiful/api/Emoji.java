@@ -3,23 +3,20 @@ package com.hrznstudio.emojiful.api;
 import com.hrznstudio.emojiful.Constants;
 import com.hrznstudio.emojiful.platform.Services;
 import com.hrznstudio.emojiful.util.EmojiUtil;
+import com.mojang.blaze3d.opengl.GlStateManager;
 import com.mojang.blaze3d.platform.NativeImage;
-import com.mojang.blaze3d.platform.TextureUtil;
-import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.texture.AbstractTexture;
-import net.minecraft.client.renderer.texture.SimpleTexture;
+import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.server.packs.resources.ResourceManager;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.tuple.Pair;
-import org.jetbrains.annotations.Nullable;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
-import java.io.*;
+import java.io.File;
+import java.io.IOException;
 import java.net.HttpURLConnection;
-import java.net.URL;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -32,7 +29,6 @@ public class Emoji implements Predicate<String> {
     public static final ResourceLocation error_texture = ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/26d4.png");
 
     public static final AtomicInteger threadDownloadCounter = new AtomicInteger(0);
-    public static final AtomicInteger threadFileLoaderCounter = new AtomicInteger(0);
     public String name;
     public List<String> strings = new ArrayList<>();
     public List<String> texts = new ArrayList<>();
@@ -41,19 +37,21 @@ public class Emoji implements Predicate<String> {
     public int sort = 0;
     public boolean worldBased = false;
     public boolean deleteOldTexture;
-    public List<DownloadImageData> img = new ArrayList<>();
+    public List<DynamicTexture> img = new ArrayList<>();
     public List<ResourceLocation> frames = new ArrayList<>();
     public boolean finishedLoading = false;
     public boolean loadedTextures = false;
     private String shortString;
     private String regex;
     private Pattern regexPattern;
-    private String textRegex;
     private Thread imageThread;
     private Thread gifLoaderThread;
 
     public void checkLoad() {
+        Constants.LOG.info("[EMOJI LOAD] checkLoad() called for emoji: {} - finishedLoading: {}, imageThread: {}, frames.size: {}", 
+            name, finishedLoading, imageThread != null, frames.size());
         if (imageThread == null && !finishedLoading) {
+            Constants.LOG.info("[EMOJI LOAD] Starting to load image for emoji: {}", name);
             loadImage();
         } else if (!loadedTextures) {
             loadedTextures = true;
@@ -64,10 +62,17 @@ public class Emoji implements Predicate<String> {
     public ResourceLocation getResourceLocationForBinding() {
         checkLoad();
         if (deleteOldTexture) {
-            img.forEach(AbstractTexture::releaseId);
+            for (DynamicTexture texture : img) {
+                if (texture != null) {
+                    texture.close();
+                }
+            }
             deleteOldTexture = false;
         }
-        return finishedLoading && frames.size() > 0 ? frames.get((int) (System.currentTimeMillis() / 10D % frames.size())) : loading_texture;
+        ResourceLocation result = finishedLoading && !frames.isEmpty() ? frames.get((int) (System.currentTimeMillis() / 10D % frames.size())) : loading_texture;
+        Constants.LOG.info("[EMOJI LOAD] getResourceLocationForBinding() for {}: finishedLoading={}, frames.size={}, returning={}", 
+            name, finishedLoading, frames.size(), result);
+        return result;
     }
 
     @Override
@@ -118,23 +123,15 @@ public class Emoji implements Predicate<String> {
         return regex;
     }
 
-    public String getTextRegex() {
-        if (textRegex != null) return textRegex;
-        List<String> processed = new ArrayList<>();
-        for (String string : texts) {
-            processed.add(EmojiUtil.cleanStringForRegex(string));
-        }
-
-        // (?<=^|\s) ensures the character before the text is either the start of the string or a whitespace
-        // (?=$|\s) ensures the character after the text is either the end of the string or a whitespace
-        textRegex = "(?<=^|\\s)(" + String.join("|", processed) + ")(?=$|\\s)";
-        return textRegex;
-    }
-
     private void loadImage() {
         File cache = getCache();
+        Constants.LOG.info("[EMOJI LOAD] loadImage() for emoji: {} - cache file: {}, exists: {}", 
+            name, cache.getAbsolutePath(), cache.exists());
+            
         if (cache.exists()) {
+            Constants.LOG.info("[EMOJI LOAD] Cache exists for {}, file size: {} bytes", name, cache.length());
             if (getUrl().endsWith(".gif") && Services.CONFIG.loadGifEmojis()) {
+                Constants.LOG.info("[EMOJI LOAD] Loading GIF emoji: {}", name);
                 if (gifLoaderThread == null) {
                     gifLoaderThread = new Thread("Emojiful Texture Downloader #" + threadDownloadCounter.incrementAndGet()) {
                         @Override
@@ -142,7 +139,7 @@ public class Emoji implements Predicate<String> {
                             try {
                                 loadTextureFrames(EmojiUtil.splitGif(cache));
                             } catch (IOException e) {
-                                e.printStackTrace();
+                                Constants.LOG.error("[EMOJI LOAD] Error loading GIF frames for {}", name, e);
                             }
                         }
                     };
@@ -150,19 +147,42 @@ public class Emoji implements Predicate<String> {
                     this.gifLoaderThread.start();
                 }
             } else {
+                Constants.LOG.info("[EMOJI LOAD] Loading static image emoji: {}", name);
                 try {
-                    DownloadImageData imageData = new DownloadImageData(ImageIO.read(cache), loading_texture);
-                    ResourceLocation resourceLocation = ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "texures/emoji/" + name.toLowerCase().replaceAll("[^a-z0-9/._-]", "") + "_" + version);
-                    Minecraft.getInstance().getTextureManager().register(resourceLocation, imageData);
-                    img.add(imageData);
-                    frames.add(resourceLocation);
+                    BufferedImage bufferedImage = ImageIO.read(cache);
+                    Constants.LOG.info("[EMOJI LOAD] Successfully read BufferedImage for {}: {}x{}", 
+                        name, bufferedImage.getWidth(), bufferedImage.getHeight());
+                    
+                    NativeImage nativeImage = EmojiUtil.convertToNativeImage(bufferedImage);
+                    Constants.LOG.info("[EMOJI LOAD] Successfully converted to NativeImage for {}: {}x{}", 
+                        name, nativeImage.getWidth(), nativeImage.getHeight());
+
+                    DynamicTexture texture = new DynamicTexture(() -> "emoji_texture" + name.toLowerCase(), nativeImage);
+
+                    ResourceLocation location = ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/emoji/" + name.toLowerCase().replaceAll("[^a-z0-9/._-]", "") + "_" + version);
+                    Minecraft.getInstance().getTextureManager().register(location, texture);
+                    Constants.LOG.info("[EMOJI LOAD] Successfully registered texture for {}: {}", name, location);
+
+                    frames.clear();
+                    frames.add(location);
+                    img.add(texture);
                     this.finishedLoading = true;
+                    Constants.LOG.info("[EMOJI LOAD] Finished loading emoji: {} - frames.size: {}", name, frames.size());
                 } catch (IOException e) {
-                    e.printStackTrace();
+                    Constants.LOG.error("[EMOJI LOAD] Error loading image for {}", name, e);
+                    // Set error state
+                    frames.clear();
+                    frames.add(error_texture);
+                    this.finishedLoading = true;
                 }
             }
-        } else if (this.imageThread == null) {
-            loadTextureFromServer();
+        } else {
+            Constants.LOG.info("[EMOJI LOAD] Cache does not exist for {}, checking if download thread exists: {}",
+                name, this.imageThread != null);
+            if (this.imageThread == null) {
+                Constants.LOG.info("[EMOJI LOAD] Starting download for emoji: {} from URL: {}", name, getUrl());
+                loadTextureFromServer();
+            }
         }
     }
 
@@ -171,18 +191,37 @@ public class Emoji implements Predicate<String> {
     }
 
     public File getCache() {
-        return new File("emojiful/cache/" + name + "-" + version);
+        File cacheDir = new File("emojiful/cache/");
+        if (!cacheDir.exists()) {
+            Constants.LOG.info("[EMOJI LOAD] Cache directory doesn't exist, creating: {}", cacheDir.getAbsolutePath());
+            boolean created = cacheDir.mkdirs();
+            Constants.LOG.info("[EMOJI LOAD] Cache directory creation result: {}", created);
+        }
+        File cacheFile = new File(cacheDir, name + "-" + version);
+        Constants.LOG.info("[EMOJI LOAD] Cache file path for {}: {}", name, cacheFile.getAbsolutePath());
+        return cacheFile;
     }
 
     public void loadTextureFrames(List<Pair<BufferedImage, Integer>> framesPair) {
         Minecraft.getInstance().executeBlocking(() -> {
             int i = 0;
-            for (Pair<BufferedImage, Integer> bufferedImage : framesPair) {
-                DownloadImageData imageData = new DownloadImageData(bufferedImage.getKey(), loading_texture);
-                ResourceLocation resourceLocation = ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "texures/emoji/" + name.toLowerCase().replaceAll("[^a-z0-9/._-]", "") + "_" + version + "_frame" + i);
-                Minecraft.getInstance().getTextureManager().register(resourceLocation, imageData);
-                img.add(imageData);
-                for (Integer integer = 0; integer < bufferedImage.getValue(); integer++) {
+            for (Pair<BufferedImage, Integer> bufferedImagePair : framesPair) {
+                BufferedImage bufferedImage = bufferedImagePair.getKey();
+                
+                // Convert BufferedImage to NativeImage
+                NativeImage nativeImage = EmojiUtil.convertToNativeImage(bufferedImage);
+                
+                var string = "emoji_frame_" + name.toLowerCase() + "_" + i;
+
+                DynamicTexture dynamicTexture = new DynamicTexture(() -> string, nativeImage);
+                
+                ResourceLocation resourceLocation = ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID,
+                        "textures/emoji/" + name.toLowerCase().replaceAll("[^a-z0-9/._-]", "") + "_" + version + "_frame" + i);
+                Minecraft.getInstance().getTextureManager().register(resourceLocation, dynamicTexture);
+                img.add(dynamicTexture);
+                
+                // Add frame multiple times based on duration
+                for (int integer = 0; integer < bufferedImagePair.getValue(); integer++) {
                     frames.add(resourceLocation);
                 }
                 ++i;
@@ -197,29 +236,44 @@ public class Emoji implements Predicate<String> {
             public void run() {
                 HttpURLConnection httpurlconnection = null;
                 try {
-                    httpurlconnection = (HttpURLConnection) (new URL(getUrl()).openConnection(Minecraft.getInstance().getProxy()));
+                    String url = getUrl();
+                    Constants.LOG.info("[EMOJI DOWNLOAD] Starting download for {}: {}", name, url);
+                    
+                    httpurlconnection = (HttpURLConnection) (URI.create(url).toURL()).openConnection(Minecraft.getInstance().getProxy());
                     httpurlconnection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.11 (KHTML, like Gecko) Chrome/23.0.1271.95 Safari/537.11");
                     httpurlconnection.setDoInput(true);
                     httpurlconnection.setDoOutput(false);
                     httpurlconnection.connect();
-                    if (httpurlconnection.getResponseCode() / 100 == 2) {
+
+                    int responseCode = httpurlconnection.getResponseCode();
+                    Constants.LOG.info("[EMOJI DOWNLOAD] Response code for {}: {}", name, responseCode);
+
+                    if (responseCode / 100 == 2) {
+                        File cacheFile = getCache();
+                        Constants.LOG.info("[EMOJI DOWNLOAD] Successfully connected, downloading to: {}", cacheFile.getAbsolutePath());
+
                         if (getCache() != null) {
-                            FileUtils.copyInputStreamToFile(httpurlconnection.getInputStream(), getCache());
+                            FileUtils.copyInputStreamToFile(httpurlconnection.getInputStream(), cacheFile);
+                            Constants.LOG.info("[EMOJI DOWNLOAD] Downloaded {} bytes for {}", cacheFile.length(), name);
                         }
                         Emoji.this.finishedLoading = true;
+                        Constants.LOG.info("[EMOJI DOWNLOAD] Download complete for {}, calling loadImage()", name);
                         loadImage();
                     } else {
+                        Constants.LOG.error("[EMOJI DOWNLOAD] Failed to download {}: HTTP {}", name, responseCode);
                         Emoji.this.frames = new ArrayList<>();
                         Emoji.this.frames.add(noSignal_texture);
                         Emoji.this.deleteOldTexture = true;
                         Emoji.this.finishedLoading = true;
+                        Constants.LOG.info("[EMOJI DOWNLOAD] Set error state for {}", name);
                     }
                 } catch (Exception exception) {
-                    exception.printStackTrace();
+                    Constants.LOG.error("[EMOJI DOWNLOAD] Exception downloading {}: {}", name, exception.getMessage(), exception);
                     Emoji.this.frames = new ArrayList<>();
                     Emoji.this.frames.add(error_texture);
                     Emoji.this.deleteOldTexture = true;
                     Emoji.this.finishedLoading = true;
+                    Constants.LOG.info("[EMOJI DOWNLOAD] Set error state for {} due to exception", name);
                 } finally {
                     if (httpurlconnection != null) {
                         httpurlconnection.disconnect();
@@ -231,68 +285,4 @@ public class Emoji implements Predicate<String> {
         this.imageThread.start();
     }
 
-    public class DownloadImageData extends SimpleTexture {
-        private final BufferedImage cacheFile;
-        public boolean textureUploaded;
-        private NativeImage nativeImage;
-
-        public DownloadImageData(BufferedImage cacheFileIn, ResourceLocation textureResourceLocation) {
-            super(textureResourceLocation);
-            this.cacheFile = cacheFileIn;
-        }
-
-        private void checkTextureUploaded() {
-            if (!this.textureUploaded) {
-                if (this.nativeImage != null) {
-                    if (this.location != null) {
-                        this.releaseId();
-                    }
-                    TextureUtil.prepareImage(super.getId(), this.nativeImage.getWidth(), this.nativeImage.getHeight());
-                    this.nativeImage.upload(0, 0, 0, true);
-                    this.textureUploaded = true;
-                }
-            }
-        }
-
-        private void setImage(NativeImage nativeImageIn) {
-            Minecraft.getInstance().execute(() -> {
-                this.textureUploaded = true;
-                if (!RenderSystem.isOnRenderThread()) {
-                    RenderSystem.recordRenderCall(() -> {
-                        this.upload(nativeImageIn);
-                    });
-                } else {
-                    this.upload(nativeImageIn);
-                }
-
-            });
-        }
-
-        private void upload(NativeImage imageIn) {
-            TextureUtil.prepareImage(this.getId(), imageIn.getWidth(), imageIn.getHeight());
-            imageIn.upload(0, 0, 0, true);
-        }
-
-        @Nullable
-        private NativeImage loadTexture(InputStream inputStreamIn) {
-            NativeImage nativeimage = null;
-            try {
-                nativeimage = NativeImage.read(inputStreamIn);
-            } catch (IOException ioexception) {
-                Constants.LOG.warn("Error while loading the skin texture", ioexception);
-            }
-            return nativeimage;
-        }
-
-        @Override
-        public void load(ResourceManager resourceManager) throws IOException {
-            if (this.cacheFile != null) {
-                ByteArrayOutputStream os = new ByteArrayOutputStream();
-                ImageIO.write(this.cacheFile, "png", os);
-                InputStream is = new ByteArrayInputStream(os.toByteArray());
-                setImage(this.loadTexture(is));
-            }
-        }
-
-    }
 }

@@ -1,59 +1,44 @@
 package com.hrznstudio.emojiful.datapack;
 
-import com.google.gson.JsonObject;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
-import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.util.ExtraCodecs;
-import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeSerializer;
 
-import java.util.Objects;
 
 public class EmojiRecipeSerializer implements RecipeSerializer<EmojiRecipe> {
+    public static final EmojiRecipeSerializer INSTANCE = new EmojiRecipeSerializer();
 
-    private final StreamCodec<RegistryFriendlyByteBuf, EmojiRecipe> codec;
-    private final MapCodec<EmojiRecipe> mapCodec;
-
-    public EmojiRecipeSerializer() {
-        this.codec = new StreamCodec<RegistryFriendlyByteBuf, EmojiRecipe>() {
-            @Override
-            public EmojiRecipe decode(RegistryFriendlyByteBuf registryFriendlyByteBuf) {
-                return new EmojiRecipe(registryFriendlyByteBuf.readUtf(), registryFriendlyByteBuf.readUtf(), registryFriendlyByteBuf.readUtf());
-            }
-
-            @Override
-            public void encode(RegistryFriendlyByteBuf buff, EmojiRecipe emojiRecipe) {
-                buff.writeUtf(emojiRecipe.getCategory());
-                buff.writeUtf(emojiRecipe.getName());
-                buff.writeUtf(emojiRecipe.getUrl());
-            }
-        };
-        this.mapCodec = RecordCodecBuilder.mapCodec(instance -> {
-            var test = instance.group(
-                    Codec.STRING.optionalFieldOf("group", "").forGetter(Recipe::getGroup),
-                    Codec.STRING.fieldOf("category").forGetter(EmojiRecipe::getCategory),
-                    Codec.STRING.fieldOf("name").forGetter(EmojiRecipe::getName),
-                    Codec.STRING.fieldOf("url").forGetter(EmojiRecipe::getUrl));
-            return test.apply(instance, (s, s2, s3, s4) -> new EmojiRecipe(s2, s3, s4));
-        });
-    }
-
+    public static final MapCodec<EmojiRecipe> CODEC = RecordCodecBuilder.mapCodec(instance ->
+            instance.group(
+                    Codec.STRING.fieldOf("name").forGetter(EmojiRecipe::name),
+                    Codec.STRING.fieldOf("category").forGetter(EmojiRecipe::category),
+                    Codec.STRING.fieldOf("url").forGetter(EmojiRecipe::url)
+            ).apply(instance, EmojiRecipe::new)
+    );
 
     @Override
     public MapCodec<EmojiRecipe> codec() {
-        return mapCodec;
+        return CODEC;
     }
 
     @Override
     public StreamCodec<RegistryFriendlyByteBuf, EmojiRecipe> streamCodec() {
-        return this.codec;
+        return StreamCodec.of(this::toNetwork, this::fromNetwork);
     }
 
+    private void toNetwork(RegistryFriendlyByteBuf buffer, EmojiRecipe recipe) {
+        buffer.writeUtf(recipe.name());
+        buffer.writeUtf(recipe.category());
+        buffer.writeUtf(recipe.url());
+    }
 
-
+    private EmojiRecipe fromNetwork(RegistryFriendlyByteBuf buffer) {
+        String name = buffer.readUtf();
+        String category = buffer.readUtf();
+        String url = buffer.readUtf();
+        return new EmojiRecipe(name, category, url);
+    }
 }

@@ -2,10 +2,11 @@ package com.hrznstudio.emojiful.api;
 
 import com.hrznstudio.emojiful.Constants;
 import com.mojang.blaze3d.platform.NativeImage;
-import com.mojang.blaze3d.platform.TextureUtil;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.client.renderer.texture.SimpleTexture;
+import net.minecraft.client.renderer.texture.TextureContents;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.ResourceManager;
 import org.apache.commons.io.FileUtils;
@@ -36,7 +37,7 @@ public class EmojiFromTwitmoji extends Emoji {
     public ResourceLocation getResourceLocationForBinding() {
         checkLoad();
         if (deleteOldTexture) {
-            img.releaseId();
+            img.close();
             deleteOldTexture = false;
         }
         return resourceLocation;
@@ -53,9 +54,7 @@ public class EmojiFromTwitmoji extends Emoji {
     public class DownloadImageData extends SimpleTexture {
         private final File cacheFile;
         private final String imageUrl;
-        private NativeImage nativeImage;
         private Thread imageThread;
-        private boolean textureUploaded;
 
         public DownloadImageData(File cacheFileIn, String imageUrlIn, ResourceLocation textureResourceLocation) {
             super(textureResourceLocation);
@@ -63,24 +62,15 @@ public class EmojiFromTwitmoji extends Emoji {
             this.imageUrl = imageUrlIn;
         }
 
-        private void checkTextureUploaded() {
-            if (!this.textureUploaded) {
-                if (this.nativeImage != null) {
-                    if (this.location != null) {
-                        this.releaseId();
-                    }
-                    TextureUtil.prepareImage(super.getId(), this.nativeImage.getWidth(), this.nativeImage.getHeight());
-                    this.nativeImage.upload(0, 0, 0, true);
-                    this.textureUploaded = true;
-                }
-            }
-        }
-
         private void setImage(NativeImage nativeImageIn) {
             Minecraft.getInstance().execute(() -> {
-                this.textureUploaded = true;
                 if (!RenderSystem.isOnRenderThread()) {
-                    RenderSystem.recordRenderCall(() -> {
+                    Minecraft.getInstance().execute(() -> {
+                        if (nativeImageIn == null) {
+                            EmojiFromTwitmoji.this.resourceLocation = error_texture;
+                            EmojiFromTwitmoji.this.deleteOldTexture = true;
+                            return;
+                        }
                         this.upload(nativeImageIn);
                     });
                 } else {
@@ -91,8 +81,8 @@ public class EmojiFromTwitmoji extends Emoji {
         }
 
         private void upload(NativeImage imageIn) {
-            TextureUtil.prepareImage(this.getId(), imageIn.getWidth(), imageIn.getHeight());
-            imageIn.upload(0, 0, 0, true);
+            DynamicTexture dynamicTexture = new DynamicTexture(String::new, imageIn);
+            dynamicTexture.upload();
         }
 
         @Nullable
@@ -109,7 +99,7 @@ public class EmojiFromTwitmoji extends Emoji {
         }
 
         @Override
-        public void load(ResourceManager resourceManager) throws IOException {
+        public TextureContents loadContents(ResourceManager resourceManager) throws IOException {
             if (this.imageThread == null) {
                 if (this.cacheFile != null && this.cacheFile.isFile()) {
                     try {
@@ -122,6 +112,7 @@ public class EmojiFromTwitmoji extends Emoji {
                     this.loadTextureFromServer();
                 }
             }
+            return TextureContents.load(resourceManager, img.resourceId());
         }
 
         protected void loadTextureFromServer() {
