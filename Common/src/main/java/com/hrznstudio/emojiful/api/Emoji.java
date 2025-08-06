@@ -3,7 +3,6 @@ package com.hrznstudio.emojiful.api;
 import com.hrznstudio.emojiful.Constants;
 import com.hrznstudio.emojiful.platform.Services;
 import com.hrznstudio.emojiful.util.EmojiUtil;
-import com.mojang.blaze3d.opengl.GlStateManager;
 import com.mojang.blaze3d.platform.NativeImage;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.DynamicTexture;
@@ -44,12 +43,10 @@ public class Emoji implements Predicate<String> {
     private String shortString;
     private String regex;
     private Pattern regexPattern;
-    private Thread imageThread;
-    private Thread gifLoaderThread;
+    protected Thread imageThread;
+    protected Thread gifLoaderThread;
 
     public void checkLoad() {
-        Constants.LOG.info("[EMOJI LOAD] checkLoad() called for emoji: {} - finishedLoading: {}, imageThread: {}, frames.size: {}", 
-            name, finishedLoading, imageThread != null, frames.size());
         if (imageThread == null && !finishedLoading) {
             Constants.LOG.info("[EMOJI LOAD] Starting to load image for emoji: {}", name);
             loadImage();
@@ -60,7 +57,7 @@ public class Emoji implements Predicate<String> {
     }
 
     public ResourceLocation getResourceLocationForBinding() {
-        checkLoad();
+        this.checkLoad();
         if (deleteOldTexture) {
             for (DynamicTexture texture : img) {
                 if (texture != null) {
@@ -69,10 +66,7 @@ public class Emoji implements Predicate<String> {
             }
             deleteOldTexture = false;
         }
-        ResourceLocation result = finishedLoading && !frames.isEmpty() ? frames.get((int) (System.currentTimeMillis() / 10D % frames.size())) : loading_texture;
-        Constants.LOG.info("[EMOJI LOAD] getResourceLocationForBinding() for {}: finishedLoading={}, frames.size={}, returning={}", 
-            name, finishedLoading, frames.size(), result);
-        return result;
+        return finishedLoading && !frames.isEmpty() ? frames.get((int) (System.currentTimeMillis() / 10D % frames.size())) : loading_texture;
     }
 
     @Override
@@ -123,7 +117,7 @@ public class Emoji implements Predicate<String> {
         return regex;
     }
 
-    private void loadImage() {
+    protected void loadImage() {
         File cache = getCache();
         Constants.LOG.info("[EMOJI LOAD] loadImage() for emoji: {} - cache file: {}, exists: {}", 
             name, cache.getAbsolutePath(), cache.exists());
@@ -157,17 +151,7 @@ public class Emoji implements Predicate<String> {
                     Constants.LOG.info("[EMOJI LOAD] Successfully converted to NativeImage for {}: {}x{}", 
                         name, nativeImage.getWidth(), nativeImage.getHeight());
 
-                    DynamicTexture texture = new DynamicTexture(() -> "emoji_texture" + name.toLowerCase(), nativeImage);
-
-                    ResourceLocation location = ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/emoji/" + name.toLowerCase().replaceAll("[^a-z0-9/._-]", "") + "_" + version);
-                    Minecraft.getInstance().getTextureManager().register(location, texture);
-                    Constants.LOG.info("[EMOJI LOAD] Successfully registered texture for {}: {}", name, location);
-
-                    frames.clear();
-                    frames.add(location);
-                    img.add(texture);
-                    this.finishedLoading = true;
-                    Constants.LOG.info("[EMOJI LOAD] Finished loading emoji: {} - frames.size: {}", name, frames.size());
+                    loadDynamicTexture(nativeImage);
                 } catch (IOException e) {
                     Constants.LOG.error("[EMOJI LOAD] Error loading image for {}", name, e);
                     // Set error state
@@ -184,6 +168,22 @@ public class Emoji implements Predicate<String> {
                 loadTextureFromServer();
             }
         }
+    }
+
+    protected void loadDynamicTexture(NativeImage nativeImage) {
+        Minecraft.getInstance().execute(() -> {
+        DynamicTexture texture = new DynamicTexture(() -> "emoji_texture" + name.toLowerCase(), nativeImage);
+
+        ResourceLocation location = ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/emoji/" + name.toLowerCase().replaceAll("[^a-z0-9/._-]", "") + "_" + version);
+        Minecraft.getInstance().getTextureManager().register(location, texture);
+        Constants.LOG.info("[EMOJI LOAD] Successfully registered texture for {}: {}", name, location);
+
+        frames.clear();
+        frames.add(location);
+        img.add(texture);
+        this.finishedLoading = true;
+        Constants.LOG.info("[EMOJI LOAD] Finished loading emoji: {} - frames.size: {}", name, frames.size());
+        });
     }
 
     public String getUrl() {

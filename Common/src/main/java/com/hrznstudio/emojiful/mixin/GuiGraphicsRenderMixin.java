@@ -3,10 +3,12 @@ package com.hrznstudio.emojiful.mixin;
 import com.hrznstudio.emojiful.Constants;
 import com.hrznstudio.emojiful.api.Emoji;
 import com.hrznstudio.emojiful.render.EmojiFontHelper;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.render.state.GuiRenderState;
 import net.minecraft.client.gui.render.state.GuiTextRenderState;
+import net.minecraft.client.renderer.MultiBufferSource.BufferSource;
 import net.minecraft.util.FormattedCharSequence;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jetbrains.annotations.NotNull;
@@ -24,9 +26,8 @@ import java.util.HashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
 
-
 @Mixin(GuiGraphics.class)
-public class GuiGraphicsRenderMixin {
+public abstract class GuiGraphicsRenderMixin {
 
 
     @Shadow @Final public GuiRenderState guiRenderState;
@@ -35,40 +36,38 @@ public class GuiGraphicsRenderMixin {
 
     @Shadow @Final public GuiGraphics.ScissorStack scissorStack;
 
-    // Target GuiGraphics.drawString which is what ChatComponent uses
+
+
     @Inject(method = "drawString(Lnet/minecraft/client/gui/Font;Lnet/minecraft/util/FormattedCharSequence;IIIZ)V", at = @At("HEAD"), cancellable = true)
     private void onGuiDrawStringFormatted(Font font, FormattedCharSequence reorderingProcessor, int x, int y, int color, boolean bl, CallbackInfo ci) {
         if (reorderingProcessor == null) {
             return;
         }
-
-        // Extract the text from FormattedCharSequence
         StringBuilder builder = new StringBuilder();
         reorderingProcessor.accept((pos, style, ch) -> {
             builder.append((char) ch);
             return true;
         });
         String text = builder.toString();
-        if (text.startsWith(EmojiFontHelper.SCAPED_STRING)) {
-            ci.cancel();
-            FormattedCharSequence plainSequence = emojiful$getFormattedCharSequence(reorderingProcessor, text);
-
-            this.guiRenderState.submitText(new GuiTextRenderState(font, plainSequence, new Matrix3x2f(this.pose), x, y, color, 0, bl, this.scissorStack.peek()));
-            return;
-        }
 
         try {
-            Pair<String, HashMap<Integer, Emoji>> cache = EmojiFontHelper.RECENT_STRINGS.get(text);
+            Pair<String, HashMap<Integer, ? extends Emoji>> cache = EmojiFontHelper.RECENT_STRINGS.get(text);
             String processedText = cache.getLeft();
-            HashMap<Integer, Emoji> emojis = cache.getRight();
+            HashMap<Integer, ? extends Emoji> emojis = cache.getRight();
 
-            if (!emojis.isEmpty() || text.contains(EmojiFontHelper.SCAPED_STRING)) {
+            if (processedText.startsWith(EmojiFontHelper.SCAPED_STRING)) {
+                ci.cancel();
+                FormattedCharSequence plainSequence = emojiful$getFormattedCharSequence(reorderingProcessor, processedText);
+
+                this.guiRenderState.submitText(new GuiTextRenderState(font, plainSequence, new Matrix3x2f(this.pose), x, y, color, 0, bl, this.scissorStack.peek()));
+                return;
+            }
+            if (!emojis.isEmpty()) {
+                ci.cancel();
                 Constants.LOG.info("[GUI GRAPHICS] Found emojis in text: {}, emojis: {}", text, emojis.size());
                 GuiGraphics guiGraphics = (GuiGraphics) (Object) this;
 
-                // Render emojis at their positions
-                net.minecraft.client.renderer.MultiBufferSource.BufferSource bufferSource =
-                        net.minecraft.client.Minecraft.getInstance().renderBuffers().bufferSource();
+                BufferSource bufferSource = Minecraft.getInstance().renderBuffers().bufferSource();
 
                 EmojiFontHelper.EmojiCharacterRenderer renderer = new EmojiFontHelper.EmojiCharacterRenderer(
                         emojis,
@@ -80,10 +79,10 @@ public class GuiGraphicsRenderMixin {
                         0xF000F0
                 );
                 FormattedCharSequence sequence = FormattedCharSequence.forward(processedText, net.minecraft.network.chat.Style.EMPTY);
-
                 sequence.accept(renderer);
+                // Finish the rendering process
+                renderer.finish(0, x);
 
-                ci.cancel();
             }
         } catch (ExecutionException e) {
             Constants.LOG.error("[GUI GRAPHICS] Error processing emoji text", e);

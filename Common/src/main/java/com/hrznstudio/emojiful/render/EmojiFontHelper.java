@@ -17,9 +17,6 @@ import net.minecraft.client.gui.font.FontSet;
 import net.minecraft.client.gui.font.glyphs.BakedGlyph;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.network.chat.Style;
-import net.minecraft.network.chat.TextColor;
-import net.minecraft.util.ARGB;
-import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.util.FormattedCharSink;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jetbrains.annotations.Nullable;
@@ -37,9 +34,9 @@ import java.util.regex.Pattern;
 public class EmojiFontHelper {
 
     public static final Vector3f SHADOW_OFFSET = new Vector3f(0.0F, 0.0F, 0.03F);
-    public static LoadingCache<String, Pair<String, HashMap<Integer, Emoji>>> RECENT_STRINGS = CacheBuilder.newBuilder().expireAfterAccess(Duration.ofSeconds(60)).build(new CacheLoader<>() {
+    public static LoadingCache<String, Pair<String, HashMap<Integer, ? extends Emoji>>> RECENT_STRINGS = CacheBuilder.newBuilder().expireAfterAccess(Duration.ofSeconds(60)).build(new CacheLoader<>() {
         @Override
-        public Pair<String, HashMap<Integer, Emoji>> load(String key) {
+        public Pair<String, HashMap<Integer, ? extends Emoji>> load(String key) {
             return getEmojiFormattedString(key);
         }
     });
@@ -49,7 +46,7 @@ public class EmojiFontHelper {
 
     }
 
-    public static Pair<String, HashMap<Integer, Emoji>> getEmojiFormattedString(String text) {
+    public static Pair<String, HashMap<Integer, ? extends Emoji>> getEmojiFormattedString(String text) {
         HashMap<Integer, Emoji> emojis = new LinkedHashMap<>();
         if (Services.CONFIG.renderEmoji() && !StringUtil.isNullOrEmpty(text)) {
             String unformattedText = ChatFormatting.stripFormatting(text);
@@ -84,24 +81,6 @@ public class EmojiFontHelper {
         return Pair.of(text, emojis);
     }
 
-    public static class CharacterProcessor implements FormattedCharSequence {
-
-        public final int pos;
-        public final Style style;
-        public final int character;
-
-        public CharacterProcessor(int pos, Style style, int character) {
-            this.pos = pos;
-            this.style = style;
-            this.character = character;
-        }
-
-        @Override
-        public boolean accept(FormattedCharSink iCharacterConsumer) {
-            return iCharacterConsumer.accept(pos, style, character);
-        }
-    }
-
     public static class EmojiCharacterRenderer implements FormattedCharSink {
         final MultiBufferSource buffer;
         final GuiGraphics guiGraphics;
@@ -110,11 +89,11 @@ public class EmojiFontHelper {
         private final int packedLight;
         private float x;
         private final float y;
-        private final HashMap<Integer, Emoji> emojis;
+        private final HashMap<Integer, ? extends Emoji> emojis;
         @Nullable
         private List<BakedGlyph.Effect> effects;
 
-        public EmojiCharacterRenderer(HashMap<Integer, Emoji> emojis, MultiBufferSource buffer, GuiGraphics guiGraphics, float x, float y, boolean dropShadow, boolean seeThrough, int packedLight) {
+        public EmojiCharacterRenderer(HashMap<Integer, ? extends Emoji> emojis, MultiBufferSource buffer, GuiGraphics guiGraphics, float x, float y, boolean dropShadow, boolean seeThrough, int packedLight) {
             this.buffer = buffer;
             this.guiGraphics = guiGraphics;
             this.emojis = emojis;
@@ -123,12 +102,6 @@ public class EmojiFontHelper {
             this.dropShadow = dropShadow;
             this.seeThrough = seeThrough;
             this.packedLight = packedLight;
-            
-            Constants.LOG.info("[EMOJI RENDER] EmojiCharacterRenderer created with {} emojis at positions: {}", 
-                emojis.size(), emojis.keySet());
-            for (var entry : emojis.entrySet()) {
-                Constants.LOG.info("[EMOJI RENDER]   Position {}: {}", entry.getKey(), entry.getValue().name);
-            }
         }
 
         private void addEffect(BakedGlyph.Effect effect) {
@@ -140,49 +113,31 @@ public class EmojiFontHelper {
 
         @Override
         public boolean accept(int pos, Style style, int charInt) {
-            // Check if there's an emoji at this position
+            Font font = Minecraft.getInstance().font;
+
             if (Services.CONFIG.renderEmoji() && this.emojis.containsKey(pos)) {
-                Emoji emoji = this.emojis.get(pos);
+                var emoji = this.emojis.get(pos);
                 Constants.LOG.debug("[EMOJI RENDER] Found emoji at position {}: {}", pos, emoji.name);
                 
                 if (!this.dropShadow) {
                     Constants.LOG.debug("[EMOJI RENDER] Rendering emoji: {} at ({}, {})", emoji.name, this.x, this.y);
                     try {
                         EmojiUtil.renderEmoji(emoji, this.x, this.y, this.guiGraphics);
+                        this.x += 10;
                     } catch (Exception e) {
                         Constants.LOG.error("[EMOJI RENDER] Failed to render emoji texture: {}", e.getMessage(), e);
                     }
                 } else {
                     Constants.LOG.debug("[EMOJI RENDER] Skipping emoji render (shadow pass): {}", emoji.name);
                 }
-            }
-            
-            // Always advance x position for all characters (including spaces that replaced emojis)
-            Font font = Minecraft.getInstance().font;
-            this.x += font.width(String.valueOf((char) charInt));
-            
-            return true;
-        }
-
-        private int getTextColor(Style style, int defaultColor) {
-            TextColor textColor = style.getColor();
-            if (textColor != null) {
-                int alpha = ARGB.alpha(defaultColor);
-                int rgb = textColor.getValue();
-                return ARGB.color(alpha, rgb);
-            }
-            return defaultColor;
-        }
-
-        private int getShadowColor(Style style, int textColor) {
-            Integer shadowColor = style.getShadowColor();
-            if (shadowColor != null) {
-                float textAlpha = ARGB.alphaFloat(textColor);
-                float shadowAlpha = ARGB.alphaFloat(shadowColor);
-                return textAlpha != 1.0F ? ARGB.color(ARGB.as8BitChannel(textAlpha * shadowAlpha), shadowColor) : shadowColor;
             } else {
-                return this.dropShadow ? ARGB.scaleRGB(textColor, 0.25F) : 0;
+                if (charInt != '☃') {
+                    guiGraphics.drawString(font, String.valueOf((char) charInt), (int) this.x, (int) this.y, -1);
+                    this.x += font.width(String.valueOf((char) charInt));
+                }
             }
+
+            return true;
         }
 
         public float finish(int backgroundColor, float originalX) {

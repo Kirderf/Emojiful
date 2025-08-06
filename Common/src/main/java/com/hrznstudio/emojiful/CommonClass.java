@@ -188,17 +188,16 @@ public class CommonClass {
 
         // Convert network data to emojis
         for (T emojiDataObj : networkEmojis) {
+            Constants.LOG.info("recived {}", emojiDataObj.toString());
             // Use reflection or interface to extract data
             String name = Services.PLATFORM.getEmojiName(emojiDataObj);
             String category = Services.PLATFORM.getEmojiCategory(emojiDataObj);
-            String url = Services.PLATFORM.getEmojiUrl(emojiDataObj);
 
-            EmojiFromGithub emoji = new EmojiFromGithub();
+            Emoji emoji = new Emoji();
             emoji.name = name;
             emoji.strings = new ArrayList<>();
             emoji.strings.add(":" + name + ":");
             emoji.location = name;
-            emoji.url = url;
             emoji.worldBased = true;
 
             Constants.EMOJI_MAP.computeIfAbsent(category, s -> new ArrayList<>()).add(emoji);

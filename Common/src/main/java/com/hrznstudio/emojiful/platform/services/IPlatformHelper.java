@@ -28,5 +28,4 @@ public interface IPlatformHelper {
 
     String getEmojiCategory(Object emojiData);
 
-    String getEmojiUrl(Object emojiData);
 }

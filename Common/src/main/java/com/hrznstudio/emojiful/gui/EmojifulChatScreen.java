@@ -19,7 +19,6 @@ public class EmojifulChatScreen extends ChatScreen {
     private EmojiSelectionGui emojiSelectionGui;
     private EmojiSuggestionHelper emojiSuggestionHelper;
 
-    private ResourceLocation emojiTexture;
     private DynamicTexture dynamicTexture;
 
     public EmojifulChatScreen(String initial) {
@@ -33,30 +32,11 @@ public class EmojifulChatScreen extends ChatScreen {
             if (Services.CONFIG.showEmojiAutocomplete()) emojiSuggestionHelper = new EmojiSuggestionHelper(this);
             if (Services.CONFIG.showEmojiSelector()) emojiSelectionGui = new EmojiSelectionGui(this);
         }
-        try {
-            emojiTexture = ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "dynamic/emoji_texture");
-            InputStream stream = Minecraft.getInstance()
-                    .getResourceManager()
-                    .getResourceOrThrow(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/icon.png")).open();
-
-            NativeImage emojiImage = NativeImage.read(stream);
-            dynamicTexture = new DynamicTexture(String::new, emojiImage);
-
-            TextureManager textureManager = Minecraft.getInstance().getTextureManager();
-            textureManager.register(emojiTexture, dynamicTexture);
-
-            stream.close();
-
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
     }
 
     @Override
     public void onClose() {
         super.onClose();
-        // Clean up dynamic texture to free GPU memory when screen closes
         if (dynamicTexture != null) {
             dynamicTexture.close();
             dynamicTexture = null;
@@ -66,9 +46,6 @@ public class EmojifulChatScreen extends ChatScreen {
     @Override
     public void render(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         super.render(guiGraphics, mouseX, mouseY, partialTick);
-        //var img = dynamicTexture.getPixels();
-        //guiGraphics.blit(emojiTexture, img.getWidth(), img.getHeight(), 0, 0, 1, 0, 0, -1);
-
         if (emojiSuggestionHelper != null) emojiSuggestionHelper.render(guiGraphics);
         if (emojiSelectionGui != null) {
             emojiSelectionGui.mouseMoved(mouseX, mouseY);

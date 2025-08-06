@@ -39,11 +39,4 @@ public class FabricPlatformHelper implements IPlatformHelper {
         throw new IllegalArgumentException("Expected EmojiData, got: " + emojiData.getClass());
     }
 
-    @Override
-    public String getEmojiUrl(Object emojiData) {
-        if (emojiData instanceof EmojiData data) {
-            return data.url();
-        }
-        throw new IllegalArgumentException("Expected EmojiData, got: " + emojiData.getClass());
-    }
 }

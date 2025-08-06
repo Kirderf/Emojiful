@@ -42,10 +42,12 @@ public class EmojiUtil extends RenderStateShard {
     }
 
 
-    public static void renderEmoji(Emoji emoji, float x, float y, GuiGraphics buffer) {
+    public static <T extends Emoji> void renderEmoji(T emoji, float x, float y, GuiGraphics buffer) {
         try {
 
             int size = 10;
+            Constants.LOG.info("Getting emoji texture for: {}", emoji.name);
+            Constants.LOG.info("Emoji class: {}", emoji.getClass().getName());
             ResourceLocation texture = emoji.getResourceLocationForBinding();
 
             // Debug logging with proper logger
@@ -57,8 +59,8 @@ public class EmojiUtil extends RenderStateShard {
             //Constants.LOG.info("[EMOJI UTIL] Emoji version: {}", emoji.version);
 
             if (texture != null && emoji.finishedLoading) {
-                Constants.LOG.info("[EMOJI UTIL] Attempting to render emoji texture");
-                buffer.blit(texture, size + (int) x, size + (int) y, (int) x, (int) y, 1, 0, 0, -1);
+                Constants.LOG.info("[EMOJI UTIL] Attempting to render emoji texture, x: {}, y: {}, size: {}", x, y, size);
+                buffer.blit(texture, size + (int) x+1, size + (int) y-1, (int) x, (int) (y-1), 1, 0, 0, -1);
 
             } else {
                 Constants.LOG.warn("[EMOJI UTIL] Emoji texture is null or not finished loading: {}", emoji.name);
